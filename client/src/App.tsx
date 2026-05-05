@@ -91,6 +91,9 @@ type MapPreview = {
 const markerPalette = ["#fbf1d7", "#fad6b5", "#faadac", "#fcdfe5", "#daf1ee", "#b6e3e7"];
 const MAP_MIN_ZOOM = .72;
 const MAP_MAX_ZOOM = 18;
+const PUBLIC_CACHE_TTL = 10 * 60 * 1000;
+const publicCache = new Map<string, { expiresAt: number; value: unknown }>();
+const publicInFlight = new Map<string, Promise<unknown>>();
 
 const introAccordionItems = [
   {
@@ -108,6 +111,36 @@ const introAccordionItems = [
 ];
 
 async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const shouldCache = method === "GET" && isPublicCacheable(url);
+  const cached = shouldCache ? publicCache.get(url) : null;
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value as T;
+  }
+
+  const inFlight = shouldCache ? publicInFlight.get(url) : null;
+  if (inFlight) {
+    return inFlight as Promise<T>;
+  }
+
+  const request = requestApi<T>(url, options);
+
+  if (shouldCache) {
+    publicInFlight.set(url, request);
+    request
+      .then((value) => {
+        publicCache.set(url, { value, expiresAt: Date.now() + PUBLIC_CACHE_TTL });
+      })
+      .finally(() => {
+        publicInFlight.delete(url);
+      });
+  }
+
+  return request;
+}
+
+async function requestApi<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, {
     credentials: "include",
     headers: {
@@ -123,6 +156,23 @@ async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+function isPublicCacheable(url: string) {
+  const [path, query = ""] = url.split("?");
+
+  if (path === "/china.json" || path === "/api/categories" || path === "/api/nomads" || path === "/api/spaces") {
+    return true;
+  }
+
+  return (path === "/api/spaces" || path === "/api/nomads") && query.length > 0;
+}
+
+function prefetchPublicData() {
+  void api<ChinaGeoJson>("/china.json").catch(() => undefined);
+  void api<Category[]>("/api/categories").catch(() => undefined);
+  void api<Space[]>("/api/spaces").catch(() => undefined);
+  void api<NomadCommunity[]>("/api/nomads").catch(() => undefined);
 }
 
 function useAsync<T>(loader: () => Promise<T>, deps: unknown[]) {
@@ -207,6 +257,27 @@ function App() {
     api<User | null>("/api/auth/me").then(setUser).catch(() => setUser(null));
   }, []);
 
+  useEffect(() => {
+    let timeoutId: number | null = null;
+    let idleId: number | null = null;
+
+    if ("requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(prefetchPublicData, { timeout: 1800 });
+    } else {
+      timeoutId = globalThis.setTimeout(prefetchPublicData, 500);
+    }
+
+    return () => {
+      if (idleId !== null && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      }
+
+      if (timeoutId !== null) {
+        globalThis.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
   function openAuth(mode: AuthMode = "login") {
     setAuthMode(mode);
     setAuthOpen(true);
@@ -254,7 +325,7 @@ function NavBar({ user, openAuth, logout }: { user: User | null; openAuth: (mode
           <small>spatial field notes</small>
         </span>
       </Link>
-      <nav className="tabs">
+      <nav className="tabs" onMouseEnter={prefetchPublicData} onFocus={prefetchPublicData}>
         <NavLink to="/">地图</NavLink>
         <NavLink to="/atlas">图鉴</NavLink>
         <NavLink to="/nomads">游牧</NavLink>

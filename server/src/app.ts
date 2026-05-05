@@ -57,13 +57,28 @@ app.use("/api/me", meRouter);
 
 const clientDist = path.join(projectRoot, "client/dist");
 if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
+  app.use(express.static(clientDist, {
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return;
+      }
+
+      if (filePath.endsWith("china.json") || /\.(png|jpe?g|webp|gif|ico)$/i.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        return;
+      }
+
+      res.setHeader("Cache-Control", "no-cache");
+    }
+  }));
   app.use((req, res, next) => {
     if (req.method !== "GET" || req.path.startsWith("/api/")) {
       next();
       return;
     }
 
+    res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.join(clientDist, "index.html"));
   });
 }
