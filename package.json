@@ -1,0 +1,23 @@
+{
+  "name": "hidden-corners-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11"
+  },
+  "scripts": {
+    "dev": "npm run dev:server & npm run dev:client",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "db:import": "python3 data/import_from_excel.py",
+    "build": "npm --prefix server run build && npm --prefix client run build",
+    "render:build": "npm run install:all && npm run build",
+    "start": "npm --prefix server run start",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix client run typecheck",
+    "legacy:dev": "node server.mjs",
+    "legacy:check": "node --check server.mjs && node --check public/app.js"
+  }
+}

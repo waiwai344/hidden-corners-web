@@ -1,0 +1,21 @@
+# Optional Render Blueprint.
+# Rename this file to `render.yaml` only if you want to deploy from a Blueprint.
+# The disk section may require a paid Render plan.
+
+services:
+  - type: web
+    name: hidden-corners-web
+    runtime: node
+    buildCommand: npm run render:build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_PATH
+        value: /var/data/hidden-corners.sqlite
+    disk:
+      name: hidden-corners-data
+      mountPath: /var/data
+      sizeGB: 1
